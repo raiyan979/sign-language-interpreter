@@ -1,33 +1,67 @@
 import os
 os.environ['PROTOCOL_BUFFERS_PYTHON_IMPLEMENTATION'] = 'python'
 from sklearn.model_selection import train_test_split
-from tensorflow.keras.utils import to_categorical
-from tensorflow.keras.models import Sequential
-from tensorflow.keras.layers import LSTM, Dense
-from tensorflow.keras.callbacks import TensorBoard
+try:
+    from tensorflow.keras.utils import to_categorical
+    from tensorflow.keras.models import Sequential
+    from tensorflow.keras.layers import LSTM, Dense
+    from tensorflow.keras.callbacks import TensorBoard
+except ImportError:
+    from keras.utils import to_categorical
+    from keras.models import Sequential
+    from keras.layers import LSTM, Dense
+    from keras.callbacks import TensorBoard
 import numpy as np
 import os
 
 # 1. Load Data
 DATA_PATH = os.path.join('MP_Data') 
-actions = np.array(['hello', 'thanks', 'iloveyou'])
+actions_all = np.array(['hello', 'thanks', 'iloveyou'])
 no_sequences = 30
 sequence_length = 30
 
-label_map = {label:num for num, label in enumerate(actions)}
-
 sequences, labels = [], []
-for action in actions:
+actions_loaded = []
+label_map = {}
+
+for action in actions_all:
+    print(f"Checking data for action: {action}")
+    action_sequences = []
+    count = 0
     for sequence in range(no_sequences):
         window = []
+        skip_sequence = False
         for frame_num in range(sequence_length):
-            res = np.load(os.path.join(DATA_PATH, action, str(sequence), "{}.npy".format(frame_num)))
+            path = os.path.join(DATA_PATH, action, str(sequence), "{}.npy".format(frame_num))
+            if not os.path.exists(path):
+                skip_sequence = True
+                break
+            res = np.load(path)
             window.append(res)
-        sequences.append(window)
-        labels.append(label_map[action])
+        
+        if not skip_sequence:
+            action_sequences.append(window)
+            count += 1
+    
+    if count > 0:
+        print(f"Total sequences loaded for {action}: {count}")
+        label_map[action] = len(actions_loaded)
+        actions_loaded.append(action)
+        for seq in action_sequences:
+            sequences.append(seq)
+            labels.append(label_map[action])
+    else:
+        print(f"No complete data for {action}, skipping.")
+
+actions = np.array(actions_loaded)
+print(f"Actions found with data: {actions}")
+
+if len(actions) == 0:
+    print("Error: No complete data found for ANY action. Please run data_collection.py first.")
+    exit()
 
 X = np.array(sequences)
-y = to_categorical(labels).astype(int)
+y = to_categorical(labels, num_classes=len(actions)).astype(int)
 
 X_train, X_test, y_train, y_test = train_test_split(X, y, test_size=0.05)
 
@@ -45,7 +79,11 @@ model.add(Dense(actions.shape[0], activation='softmax'))
 
 model.compile(optimizer='Adam', loss='categorical_crossentropy', metrics=['categorical_accuracy'])
 
-model.fit(X_train, y_train, epochs=2000, callbacks=[tb_callback])
+# Train with 200 epochs for a quick testable model
+model.fit(X_train, y_train, epochs=200, callbacks=[tb_callback])
 
 # 3. Save Model
 model.save('action.h5')
+# Also save the actions names so the prediction script can use them
+np.save('actions.npy', actions)
+print(f"Model saved as 'action.h5' for actions: {actions}")

@@ -1,11 +1,24 @@
 import os
-os.environ['PROTOCOL_BUFFERS_PYTHON_IMPLEMENTATION'] = 'python'
-import cv2
-import numpy as np
-import os
-from matplotlib import pyplot as plt
 import time
+import sys
+
+def log_to_file(msg):
+    try:
+        with open("startup_log.txt", "a") as f:
+            f.write(f"{time.ctime()}: {msg}\n")
+    except:
+        pass
+    print(msg, flush=True)
+
+log_to_file("--- Script Starting ---")
+import cv2
+log_to_file("Importing numpy...")
+import numpy as np
+log_to_file("Importing os...")
+import os
+log_to_file("Importing mediapipe...")
 import mediapipe as mp
+log_to_file("All imports successful.")
 
 # 1. Setup MediaPipe
 mp_holistic = mp.solutions.holistic 
@@ -61,64 +74,93 @@ for action in actions:
             pass
 
 # 3. Collect Data
-cap = None
-for index in range(3):
-    temp_cap = cv2.VideoCapture(index, cv2.CAP_DSHOW)
-    if temp_cap.isOpened():
-        ret, frame = temp_cap.read()
-        if ret:
-            cap = temp_cap
-            print(f"Camera found at index {index}")
-            break
-        temp_cap.release()
+def get_camera():
+    print("Searching for cameras (minimal mode)...")
+    for index in [0, 1]:
+        print(f"Trying index {index} (DSHOW)...")
+        cap = cv2.VideoCapture(index, cv2.CAP_DSHOW)
+        if cap.isOpened():
+            ret, frame = cap.read()
+            if ret and frame is not None:
+                print("SUCCESS!")
+                return cap
+            cap.release()
+        
+        print(f"Trying index {index} (Default)...")
+        cap = cv2.VideoCapture(index)
+        if cap.isOpened():
+            ret, frame = cap.read()
+            if ret and frame is not None:
+                print("SUCCESS!")
+                return cap
+            cap.release()
+    return None
+
+cap = get_camera()
 
 if cap is None:
-    print("Error: Could not open any camera (tried indices 0, 1, 2).")
+    print("Error: Could not open any camera.")
     exit()
+
 # Set mediapipe model 
-with mp_holistic.Holistic(min_detection_confidence=0.5, min_tracking_confidence=0.5) as holistic:
-    
-    # NEW LOOP
-    # Loop through actions
-    for action in actions:
-        # Loop through sequences aka videos
-        for sequence in range(no_sequences):
-            # Loop through video length aka sequence length
-            for frame_num in range(sequence_length):
-
-                # Read feed
-                ret, frame = cap.read()
-                frame = cv2.flip(frame, 1)
-
-                # Make detections
-                image, results = mediapipe_detection(frame, holistic)
-
-                # Draw landmarks
-                draw_styled_landmarks(image, results)
+print("Initializing MediaPipe...")
+stop_collection = False
+try:
+    with mp_holistic.Holistic(min_detection_confidence=0.5, min_tracking_confidence=0.5) as holistic:
+        print("MediaPipe initialized. Starting data collection loops...")
+        # Loop through actions
+        for action in actions:
+            if stop_collection: break
+            
+            # Loop through sequences aka videos
+            for sequence in range(no_sequences):
+                if stop_collection: break
                 
-                # NEW Apply wait logic
-                if frame_num == 0: 
-                    cv2.putText(image, 'STARTING COLLECTION', (120,200), 
-                               cv2.FONT_HERSHEY_SIMPLEX, 1, (0,255, 0), 4, cv2.LINE_AA)
-                    cv2.putText(image, 'Collecting frames for {} Video Number {}'.format(action, sequence), (15,12), 
-                               cv2.FONT_HERSHEY_SIMPLEX, 0.5, (0, 0, 255), 1, cv2.LINE_AA)
-                    # Show to screen
-                    cv2.imshow('OpenCV Feed', image)
-                    cv2.waitKey(2000) # Wait 2 seconds between videos
-                else: 
-                    cv2.putText(image, 'Collecting frames for {} Video Number {}'.format(action, sequence), (15,12), 
-                               cv2.FONT_HERSHEY_SIMPLEX, 0.5, (0, 0, 255), 1, cv2.LINE_AA)
-                    # Show to screen
-                    cv2.imshow('OpenCV Feed', image)
-                
-                # NEW Export keypoints
-                keypoints = extract_keypoints(results)
-                npy_path = os.path.join(DATA_PATH, action, str(sequence), str(frame_num))
-                np.save(npy_path, keypoints)
+                # Loop through video length aka sequence length
+                for frame_num in range(sequence_length):
+                    # Read feed
+                    ret, frame = cap.read()
+                    if not ret or frame is None:
+                        continue
+                        
+                    # Mirror the image (Horizontal flip)
+                    frame = cv2.flip(frame, 1)
 
-                # Break gracefully
-                if cv2.waitKey(10) & 0xFF == ord('q'):
-                    break
+                    # Make detections
+                    image, results = mediapipe_detection(frame, holistic)
+
+                    # Draw landmarks
+                    draw_styled_landmarks(image, results)
                     
-    cap.release()
+                    # Apply wait logic
+                    if frame_num == 0: 
+                        cv2.putText(image, 'STARTING COLLECTION', (120,200), 
+                                   cv2.FONT_HERSHEY_SIMPLEX, 1, (0,255, 0), 4, cv2.LINE_AA)
+                        cv2.putText(image, 'Collecting frames for {} Video Number {}'.format(action, sequence), (15,12), 
+                                   cv2.FONT_HERSHEY_SIMPLEX, 0.5, (0, 0, 255), 1, cv2.LINE_AA)
+                        cv2.imshow('OpenCV Feed', image)
+                        if cv2.waitKey(500) & 0xFF == ord('q'):
+                            stop_collection = True
+                            break
+                    else: 
+                        cv2.putText(image, 'Collecting frames for {} Video Number {}'.format(action, sequence), (15,12), 
+                                   cv2.FONT_HERSHEY_SIMPLEX, 0.5, (0, 0, 255), 1, cv2.LINE_AA)
+                        cv2.imshow('OpenCV Feed', image)
+                    
+                    # Export keypoints
+                    keypoints = extract_keypoints(results)
+                    npy_path = os.path.join(DATA_PATH, action, str(sequence), str(frame_num))
+                    np.save(npy_path, keypoints)
+
+                    # Break gracefully
+                    key = cv2.waitKey(10) & 0xFF
+                    if key == ord('q') or cv2.getWindowProperty('OpenCV Feed', cv2.WND_PROP_VISIBLE) < 1:
+                        print("Collection interrupted by user.")
+                        stop_collection = True
+                        break
+finally:
+    print("Releasing resources...")
+    if cap is not None:
+        cap.release()
     cv2.destroyAllWindows()
+    print("Done.")

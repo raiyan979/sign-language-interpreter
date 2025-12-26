@@ -3,3 +3,7 @@ MP_Data/
 .ipynb_checkpoints/
 __pycache__/
 *.pyc
+Logs/
+*.log
+startup_log.txt
+debug_output.txt
