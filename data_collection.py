@@ -58,15 +58,15 @@ def extract_keypoints(results):
 DATA_PATH = os.path.join('MP_Data') 
 
 # Actions that we try to detect
-actions = np.array(['hello', 'thanks', 'iloveyou'])
+actions_all = np.array(['hello', 'how', 'you', 'A', 'B', 'C', 'D', 'E'])
 
-# Thirty videos worth of data
-no_sequences = 30
+# Ten videos worth of data
+no_sequences = 10
 
 # Videos are going to be 30 frames in length
 sequence_length = 30
 
-for action in actions: 
+for action in actions_all: 
     for sequence in range(no_sequences):
         try: 
             os.makedirs(os.path.join(DATA_PATH, action, str(sequence)))
@@ -109,7 +109,7 @@ try:
     with mp_holistic.Holistic(min_detection_confidence=0.5, min_tracking_confidence=0.5) as holistic:
         print("MediaPipe initialized. Starting data collection loops...")
         # Loop through actions
-        for action in actions:
+        for action in actions_all:
             if stop_collection: break
             
             # Loop through sequences aka videos
@@ -139,7 +139,8 @@ try:
                         cv2.putText(image, 'Collecting frames for {} Video Number {}'.format(action, sequence), (15,12), 
                                    cv2.FONT_HERSHEY_SIMPLEX, 0.5, (0, 0, 255), 1, cv2.LINE_AA)
                         cv2.imshow('OpenCV Feed', image)
-                        if cv2.waitKey(500) & 0xFF == ord('q'):
+                        # Wait for 2 seconds before each sequence starts
+                        if cv2.waitKey(2000) & 0xFF == ord('q'):
                             stop_collection = True
                             break
                     else: 

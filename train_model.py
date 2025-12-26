@@ -16,8 +16,8 @@ import os
 
 # 1. Load Data
 DATA_PATH = os.path.join('MP_Data') 
-actions_all = np.array(['hello', 'thanks', 'iloveyou'])
-no_sequences = 30
+actions_all = np.array(['hello', 'how', 'you', 'A', 'B', 'C', 'D', 'E'])
+no_sequences = 10
 sequence_length = 30
 
 sequences, labels = [], []
